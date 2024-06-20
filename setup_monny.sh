@@ -5,6 +5,7 @@ MONNY_SCRIPT="/usr/local/bin/monny"
 MONNY_PYTHON_SCRIPT="/usr/local/bin/monitor_container.py"
 MONNY_VENV="/usr/local/monny_venv"
 STATUS_FILE="/usr/local/bin/container_statuses.json"
+TRACKED_CONTAINERS_FILE="/usr/local/bin/tracked_containers.json"
 
 # Проверка на уже установленный сервис
 if [ -f "$MONNY_SERVICE_FILE" ]; then
@@ -34,6 +35,7 @@ if [ -f "$MONNY_SERVICE_FILE" ]; then
     rm "$MONNY_PYTHON_SCRIPT"
     rm -rf "$MONNY_VENV"
     rm -f "$STATUS_FILE"
+    rm -f "$TRACKED_CONTAINERS_FILE"
     systemctl daemon-reload
     echo "Старый сервис monny удален."
 fi
@@ -130,6 +132,16 @@ case "$1" in
         echo "Состояние контейнеров:"
         /usr/local/monny_venv/bin/python /usr/local/bin/monitor_container.py status
         ;;
+    add)
+        if [ -z "$2" ]; then
+            echo "Укажите имя контейнера для добавления."
+        else
+            /usr/local/monny_venv/bin/python /usr/local/bin/monitor_container.py add "$2"
+        fi
+        ;;
+    list)
+        /usr/local/monny_venv/bin/python /usr/local/bin/monitor_container.py list
+        ;;
     uninstall)
         systemctl stop monny.service
         systemctl disable monny.service
@@ -138,6 +150,7 @@ case "$1" in
         rm /usr/local/bin/monitor_container.py
         rm -rf /usr/local/monny_venv
         rm -f /usr/local/bin/container_statuses.json
+        rm -f /usr/local/bin/tracked_containers.json
         systemctl daemon-reload
         echo "monny сервис и скрипты удалены."
         ;;
@@ -147,10 +160,12 @@ case "$1" in
         echo "  stop       - Остановка сервиса"
         echo "  restart    - Перезапуск сервиса"
         echo "  status     - Проверка статуса сервиса и состояния контейнеров"
+        echo "  add        - Добавление контейнера в отслеживаемые"
+        echo "  list       - Вывод списка отслеживаемых контейнеров"
         echo "  uninstall  - Удаление сервиса и связанных скриптов"
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|uninstall|help}"
+        echo "Usage: $0 {start|stop|restart|status|add|list|uninstall|help}"
         exit 1
 esac
 EOF
