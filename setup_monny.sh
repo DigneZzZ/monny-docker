@@ -1,5 +1,41 @@
 #!/bin/bash
 
+MONNY_SERVICE_FILE="/etc/systemd/system/monny.service"
+MONNY_SCRIPT="/usr/local/bin/monny"
+MONNY_PYTHON_SCRIPT="/root/monitor_container.py"
+MONNY_VENV="/root/monny_venv"
+
+# Проверка на уже установленный сервис
+if [ -f "$MONNY_SERVICE_FILE" ]; then
+    echo "Сервис monny уже установлен."
+    read -p "Хотите переустановить его? (y/n): " REINSTALL
+    if [ "$REINSTALL" != "y" ]; then
+        echo "Переустановка отменена."
+        exit 0
+    fi
+
+    if [ -f "$MONNY_PYTHON_SCRIPT" ]; then
+        TELEGRAM_BOT_TOKEN=$(grep "TELEGRAM_BOT_TOKEN" "$MONNY_PYTHON_SCRIPT" | cut -d'"' -f2)
+        TELEGRAM_CHAT_ID=$(grep "TELEGRAM_CHAT_ID" "$MONNY_PYTHON_SCRIPT" | cut -d'"' -f2)
+    fi
+
+    read -p "Сохранить ли предыдущие значения TELEGRAM BOT API и CHAT ID? (y/n): " SAVE_TELEGRAM
+    if [ "$SAVE_TELEGRAM" != "y" ]; then
+        unset TELEGRAM_BOT_TOKEN
+        unset TELEGRAM_CHAT_ID
+    fi
+
+    # Остановка и удаление старого сервиса
+    systemctl stop monny.service
+    systemctl disable monny.service
+    rm "$MONNY_SERVICE_FILE"
+    rm "$MONNY_SCRIPT"
+    rm "$MONNY_PYTHON_SCRIPT"
+    rm -rf "$MONNY_VENV"
+    systemctl daemon-reload
+    echo "Старый сервис monny удален."
+fi
+
 # Проверка, установлен ли Docker
 if ! command -v docker &> /dev/null
 then
@@ -20,8 +56,8 @@ else
 fi
 
 # Создание виртуальной среды
-python3 -m venv /root/monny_venv
-source /root/monny_venv/bin/activate
+python3 -m venv "$MONNY_VENV"
+source "$MONNY_VENV/bin/activate"
 
 # Установка необходимых Python-библиотек
 pip install docker requests
@@ -30,49 +66,33 @@ pip install docker requests
 echo "Сейчас будет установлен сервис мониторинга Docker контейнеров."
 echo "Этот сервис будет проверять состояние всех контейнеров и отправлять уведомления в Telegram, если какой-то контейнер не работает."
 
-# Ввод данных для Telegram
-read -p "Введите TELEGRAM_BOT_TOKEN: " TELEGRAM_BOT_TOKEN
-read -p "Введите TELEGRAM_CHAT_ID: " TELEGRAM_CHAT_ID
-
-# Проверка на уже установленный сервис
-if systemctl list-units --full -all | grep -Fq 'monny.service'; then
-    read -p "Сервис monny уже установлен. Хотите переустановить его? (y/n): " REINSTALL
-    if [ "$REINSTALL" != "y" ]; then
-        echo "Переустановка отменена."
-        deactivate
-        exit 0
-    fi
-
-    # Остановка и удаление старого сервиса
-    systemctl stop monny.service
-    systemctl disable monny.service
-    rm /etc/systemd/system/monny.service
-    rm /usr/local/bin/monny
-    rm /root/monitor_container.py
-    rm -rf /root/monny_venv
-    systemctl daemon-reload
-    echo "Старый сервис monny удален."
+# Ввод данных для Telegram, если они не сохранены
+if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+    read -p "Введите TELEGRAM_BOT_TOKEN: " TELEGRAM_BOT_TOKEN
+fi
+if [ -z "$TELEGRAM_CHAT_ID" ]; then
+    read -p "Введите TELEGRAM_CHAT_ID: " TELEGRAM_CHAT_ID
 fi
 
 # Загрузка основного скрипта мониторинга контейнеров с GitHub
-curl -o /root/monitor_container.py https://raw.githubusercontent.com/DigneZzZ/monny-docker/main/monitor_container.py
+curl -o "$MONNY_PYTHON_SCRIPT" https://raw.githubusercontent.com/DigneZzZ/monny-docker/main/monitor_container.py
 
 # Вставка переменных в скрипт
-sed -i "s/YOUR_TELEGRAM_BOT_TOKEN/${TELEGRAM_BOT_TOKEN}/" /root/monitor_container.py
-sed -i "s/YOUR_TELEGRAM_CHAT_ID/${TELEGRAM_CHAT_ID}/" /root/monitor_container.py
+sed -i "s/YOUR_TELEGRAM_BOT_TOKEN/${TELEGRAM_BOT_TOKEN}/" "$MONNY_PYTHON_SCRIPT"
+sed -i "s/YOUR_TELEGRAM_CHAT_ID/${TELEGRAM_CHAT_ID}/" "$MONNY_PYTHON_SCRIPT"
 
 # Сделать скрипт исполняемым
-chmod +x /root/monitor_container.py
+chmod +x "$MONNY_PYTHON_SCRIPT"
 
 # Создание файла службы Systemd
-cat << EOF > /etc/systemd/system/monny.service
+cat << EOF > "$MONNY_SERVICE_FILE"
 [Unit]
 Description=Monitor Docker Containers
 
 [Service]
 Environment="TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
 Environment="TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}"
-ExecStart=/root/monny_venv/bin/python /root/monitor_container.py
+ExecStart=$MONNY_VENV/bin/python $MONNY_PYTHON_SCRIPT
 Restart=always
 
 [Install]
@@ -87,7 +107,7 @@ systemctl enable monny.service
 systemctl start monny.service
 
 # Создание скрипта управления
-cat << 'EOF' > /usr/local/bin/monny
+cat << 'EOF' > "$MONNY_SCRIPT"
 #!/bin/bash
 
 case "$1" in
@@ -130,7 +150,7 @@ esac
 EOF
 
 # Сделать скрипт управления исполняемым
-chmod +x /usr/local/bin/monny
+chmod +x "$MONNY_SCRIPT"
 
 deactivate
 
