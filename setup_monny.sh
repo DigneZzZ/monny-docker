@@ -102,6 +102,8 @@ case "$1" in
         ;;
     status)
         systemctl status monny.service
+        echo "Состояние контейнеров:"
+        /root/monny_venv/bin/python /root/monitor_container.py status
         ;;
     uninstall)
         systemctl stop monny.service
@@ -118,7 +120,7 @@ case "$1" in
         echo "  start      - Запуск сервиса"
         echo "  stop       - Остановка сервиса"
         echo "  restart    - Перезапуск сервиса"
-        echo "  status     - Проверка статуса сервиса"
+        echo "  status     - Проверка статуса сервиса и состояния контейнеров"
         echo "  uninstall  - Удаление сервиса и связанных скриптов"
         ;;
     *)
