@@ -14,13 +14,17 @@ if ! command -v python3 &> /dev/null
 then
     echo "Python3 не установлен. Устанавливаем Python3..."
     apt-get update
-    apt-get install -y python3 python3-pip
+    apt-get install -y python3 python3-venv
 else
     echo "Python3 уже установлен. Пропускаем установку..."
 fi
 
+# Создание виртуальной среды
+python3 -m venv /root/monny_venv
+source /root/monny_venv/bin/activate
+
 # Установка необходимых Python-библиотек
-pip3 install docker requests
+pip install docker requests
 
 # Сообщение о том, что будет установлено
 echo "Сейчас будет установлен сервис мониторинга Docker контейнеров."
@@ -35,6 +39,7 @@ if systemctl list-units --full -all | grep -Fq 'monny.service'; then
     read -p "Сервис monny уже установлен. Хотите переустановить его? (y/n): " REINSTALL
     if [ "$REINSTALL" != "y" ]; then
         echo "Переустановка отменена."
+        deactivate
         exit 0
     fi
 
@@ -44,6 +49,7 @@ if systemctl list-units --full -all | grep -Fq 'monny.service'; then
     rm /etc/systemd/system/monny.service
     rm /usr/local/bin/monny
     rm /root/monitor_container.py
+    rm -rf /root/monny_venv
     systemctl daemon-reload
     echo "Старый сервис monny удален."
 fi
@@ -66,7 +72,7 @@ Description=Monitor Docker Containers
 [Service]
 Environment="TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
 Environment="TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}"
-ExecStart=/usr/bin/env python3 /root/monitor_container.py
+ExecStart=/root/monny_venv/bin/python /root/monitor_container.py
 Restart=always
 
 [Install]
@@ -103,6 +109,7 @@ case "$1" in
         rm /etc/systemd/system/monny.service
         rm /usr/local/bin/monny
         rm /root/monitor_container.py
+        rm -rf /root/monny_venv
         systemctl daemon-reload
         echo "monny сервис и скрипты удалены."
         ;;
@@ -122,5 +129,7 @@ EOF
 
 # Сделать скрипт управления исполняемым
 chmod +x /usr/local/bin/monny
+
+deactivate
 
 echo "Установка завершена. Используйте команду 'monny' для управления службой."
