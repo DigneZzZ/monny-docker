@@ -26,7 +26,7 @@ def handle_event(event):
     send_telegram_message(message)
 
 # Функция для вывода статуса контейнеров
-def print_containers_status():
+def print_and_send_containers_status():
     containers = client.containers.list(all=True)
     for container in containers:
         status = container.status
@@ -34,17 +34,15 @@ def print_containers_status():
             print(f"\033[32mКонтейнер {container.name}: {status}\033[0m")  # Зеленый цвет для running
         else:
             print(f"\033[31mКонтейнер {container.name}: {status}\033[0m")  # Красный цвет для не-running
+        send_telegram_message(f"Контейнер {container.name}: {status}")
 
 # Проверка аргументов командной строки
 if len(sys.argv) > 1 and sys.argv[1] == "status":
-    print_containers_status()
+    print_and_send_containers_status()
     sys.exit(0)
 
 # Первоначальная проверка и уведомление
-containers = client.containers.list(all=True)
-for container in containers:
-    status = container.status
-    send_telegram_message(f"Первоначальный статус контейнера {container.name}: {status}")
+print_and_send_containers_status()
 
 # Основной цикл обработки событий Docker
 for event in client.events(decode=True):
