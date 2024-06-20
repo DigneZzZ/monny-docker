@@ -2,8 +2,8 @@
 
 MONNY_SERVICE_FILE="/etc/systemd/system/monny.service"
 MONNY_SCRIPT="/usr/local/bin/monny"
-MONNY_PYTHON_SCRIPT="/root/monitor_container.py"
-MONNY_VENV="/root/monny_venv"
+MONNY_PYTHON_SCRIPT="/usr/local/bin/monitor_container.py"
+MONNY_VENV="/usr/local/monny_venv"
 
 # Проверка на уже установленный сервис
 if [ -f "$MONNY_SERVICE_FILE" ]; then
@@ -70,10 +70,10 @@ echo "Сейчас будет установлен сервис монитори
 echo "Этот сервис будет проверять состояние всех контейнеров и отправлять уведомления в Telegram, если какой-то контейнер не работает."
 
 # Ввод данных для Telegram, если они не сохранены
-if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+if [ -z "$TELEGRAM_BOT_TOKEN" ];then
     read -p "Введите TELEGRAM_BOT_TOKEN: " TELEGRAM_BOT_TOKEN
 fi
-if [ -z "$TELEGRAM_CHAT_ID" ]; then
+if [ -z "$TELEGRAM_CHAT_ID" ];then
     read -p "Введите TELEGRAM_CHAT_ID: " TELEGRAM_CHAT_ID
 fi
 
@@ -126,15 +126,15 @@ case "$1" in
     status)
         systemctl status monny.service
         echo "Состояние контейнеров:"
-        /root/monny_venv/bin/python /root/monitor_container.py status
+        /usr/local/monny_venv/bin/python /usr/local/bin/monitor_container.py status
         ;;
     uninstall)
         systemctl stop monny.service
         systemctl disable monny.service
         rm /etc/systemd/system/monny.service
         rm /usr/local/bin/monny
-        rm /root/monitor_container.py
-        rm -rf /root/monny_venv
+        rm /usr/local/bin/monitor_container.py
+        rm -rf /usr/local/monny_venv
         systemctl daemon-reload
         echo "monny сервис и скрипты удалены."
         ;;
