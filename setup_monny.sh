@@ -55,19 +55,15 @@ else
     echo "Python3 уже установлен. Пропускаем установку..."
 fi
 
-# Установка pipx, если он не установлен
-if ! command -v pipx &> /dev/null
-then
-    echo "pipx не установлен. Устанавливаем pipx..."
-    apt-get install -y pipx
-    pipx ensurepath
-    export PATH="$PATH:/root/.local/bin"
-else
-    echo "pipx уже установлен. Пропускаем установку..."
-fi
+# Создание виртуальной среды
+python3 -m venv "$MONNY_VENV"
+source "$MONNY_VENV/bin/activate"
 
-# Создание виртуальной среды и установка необходимых Python-библиотек
-pipx install docker requests
+# Обновление pip
+pip install --upgrade pip
+
+# Установка необходимых Python-библиотек
+pip install docker requests
 
 # Сообщение о том, что будет установлено
 echo "Сейчас будет установлен сервис мониторинга Docker контейнеров."
@@ -99,7 +95,7 @@ Description=Monitor Docker Containers
 [Service]
 Environment="TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
 Environment="TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}"
-ExecStart=/root/.local/pipx/venvs/docker/bin/python $MONNY_PYTHON_SCRIPT
+ExecStart=$MONNY_VENV/bin/python $MONNY_PYTHON_SCRIPT
 Restart=always
 
 [Install]
@@ -130,7 +126,7 @@ case "$1" in
     status)
         systemctl status monny.service
         echo "Состояние контейнеров:"
-        /root/.local/pipx/venvs/docker/bin/python /root/monitor_container.py status
+        /root/monny_venv/bin/python /root/monitor_container.py status
         ;;
     uninstall)
         systemctl stop monny.service
@@ -138,8 +134,7 @@ case "$1" in
         rm /etc/systemd/system/monny.service
         rm /usr/local/bin/monny
         rm /root/monitor_container.py
-        pipx uninstall docker
-        pipx uninstall requests
+        rm -rf /root/monny_venv
         systemctl daemon-reload
         echo "monny сервис и скрипты удалены."
         ;;
@@ -159,5 +154,7 @@ EOF
 
 # Сделать скрипт управления исполняемым
 chmod +x "$MONNY_SCRIPT"
+
+deactivate
 
 echo "Установка завершена. Используйте команду 'monny' для управления службой."
