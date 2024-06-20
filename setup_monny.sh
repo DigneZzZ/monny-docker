@@ -9,6 +9,19 @@ else
     echo "Docker уже установлен. Пропускаем установку..."
 fi
 
+# Проверка, установлен ли Python и pip
+if ! command -v python3 &> /dev/null
+then
+    echo "Python3 не установлен. Устанавливаем Python3..."
+    apt-get update
+    apt-get install -y python3 python3-pip
+else
+    echo "Python3 уже установлен. Пропускаем установку..."
+fi
+
+# Установка необходимых Python-библиотек
+pip3 install docker requests
+
 # Сообщение о том, что будет установлено
 echo "Сейчас будет установлен сервис мониторинга Docker контейнеров."
 echo "Этот сервис будет проверять состояние всех контейнеров и отправлять уведомления в Telegram, если какой-то контейнер не работает."
@@ -30,82 +43,20 @@ if systemctl list-units --full -all | grep -Fq 'monny.service'; then
     systemctl disable monny.service
     rm /etc/systemd/system/monny.service
     rm /usr/local/bin/monny
-    rm /root/monitor_container.sh
+    rm /root/monitor_container.py
     systemctl daemon-reload
     echo "Старый сервис monny удален."
 fi
 
-# Создание основного скрипта мониторинга контейнеров
-cat << EOF > /root/monitor_container.sh
-#!/bin/bash
+# Загрузка основного скрипта мониторинга контейнеров с GitHub
+curl -o /root/monitor_container.py https://raw.githubusercontent.com/DigneZzZ/monny-docker/main/monitor_container.py
 
-# Переменные для Telegram
-TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
-TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID}"
-STATUS_FILE="/root/container_statuses.txt"
-
-# Функция для отправки уведомления в Telegram
-send_telegram_message() {
-    MESSAGE=\$1
-    curl -s -X POST "https://api.telegram.org/bot\${TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="\${TELEGRAM_CHAT_ID}" -d text="\${MESSAGE}"
-}
-
-# Функция для сохранения состояния контейнеров
-save_status() {
-    echo "\$1:\$2" >> \$STATUS_FILE
-}
-
-# Функция для загрузки состояния контейнеров
-load_status() {
-    if [ -f \$STATUS_FILE ]; then
-        grep -E "^$1:" \$STATUS_FILE | cut -d: -f2
-    else
-        echo "unknown"
-    fi
-}
-
-# Функция для проверки состояния контейнеров
-check_containers_status() {
-    CONTAINERS=\$(docker ps -a --format "{{.Names}}")
-
-    > \$STATUS_FILE.tmp
-    for CONTAINER in \$CONTAINERS; do
-        STATUS=\$(docker inspect -f '{{.State.Status}}' \${CONTAINER})
-        PREV_STATUS=\$(load_status \${CONTAINER})
-        echo "\${CONTAINER}:\${STATUS}" >> \$STATUS_FILE.tmp
-        if [ "\${STATUS}" != "\${PREV_STATUS}" ] && [ "\${STATUS}" != "running" ]; then
-            send_telegram_message "Контейнер \${CONTAINER} не в статусе running. Текущий статус: \${STATUS}"
-        fi
-    done
-    mv \$STATUS_FILE.tmp \$STATUS_FILE
-}
-
-# Функция для вывода состояния контейнеров
-print_containers_status() {
-    CONTAINERS=\$(docker ps -a --format "{{.Names}}")
-    for CONTAINER in \$CONTAINERS; do
-        STATUS=\$(docker inspect -f '{{.State.Status}}' \${CONTAINER})
-        if [ "\${STATUS}" == "running" ]; then
-            echo -e "\e[32mКонтейнер \${CONTAINER}: \${STATUS}\e[0m"  # Зеленый цвет для running
-        else
-            echo -e "\e[31mКонтейнер \${CONTAINER}: \${STATUS}\e[0m"  # Красный цвет для не-running
-        fi
-    done
-}
-
-# Основной цикл или вывод статуса
-if [ "\$1" == "status" ]; then
-    print_containers_status
-else
-    while true; do
-        check_containers_status
-        sleep 60  # Проверяем каждую минуту
-    done
-fi
-EOF
+# Вставка переменных в скрипт
+sed -i "s/YOUR_TELEGRAM_BOT_TOKEN/${TELEGRAM_BOT_TOKEN}/" /root/monitor_container.py
+sed -i "s/YOUR_TELEGRAM_CHAT_ID/${TELEGRAM_CHAT_ID}/" /root/monitor_container.py
 
 # Сделать скрипт исполняемым
-chmod +x /root/monitor_container.sh
+chmod +x /root/monitor_container.py
 
 # Создание файла службы Systemd
 cat << EOF > /etc/systemd/system/monny.service
@@ -113,7 +64,9 @@ cat << EOF > /etc/systemd/system/monny.service
 Description=Monitor Docker Containers
 
 [Service]
-ExecStart=/root/monitor_container.sh
+Environment="TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
+Environment="TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}"
+ExecStart=/usr/bin/env python3 /root/monitor_container.py
 Restart=always
 
 [Install]
@@ -143,15 +96,13 @@ case "$1" in
         ;;
     status)
         systemctl status monny.service
-        echo "Состояние контейнеров:"
-        /root/monitor_container.sh status
         ;;
     uninstall)
         systemctl stop monny.service
         systemctl disable monny.service
         rm /etc/systemd/system/monny.service
         rm /usr/local/bin/monny
-        rm /root/monitor_container.sh
+        rm /root/monitor_container.py
         systemctl daemon-reload
         echo "monny сервис и скрипты удалены."
         ;;
@@ -160,7 +111,7 @@ case "$1" in
         echo "  start      - Запуск сервиса"
         echo "  stop       - Остановка сервиса"
         echo "  restart    - Перезапуск сервиса"
-        echo "  status     - Проверка статуса сервиса и состояния контейнеров"
+        echo "  status     - Проверка статуса сервиса"
         echo "  uninstall  - Удаление сервиса и связанных скриптов"
         ;;
     *)
